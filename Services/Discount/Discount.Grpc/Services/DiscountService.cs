@@ -1,75 +1,51 @@
-﻿using Discount.Grpc.Data;
-using Discount.Grpc.Models;
+﻿using AutoMapper;
+using Discount.Grpc.Entities;
+using Discount.Grpc.Protos;
+using Discount.Grpc.Repositories;
 using Grpc.Core;
-using Mapster;
-using Microsoft.EntityFrameworkCore;
 
 namespace Discount.Grpc.Services;
 
-public class DiscountService
-    (DiscountContext dbContext, ILogger<DiscountService> logger)
-    : DiscountProtoService.DiscountProtoServiceBase
-{    
-    public override async Task<CouponModel> GetDiscount(GetDiscountRequest request, ServerCallContext context)
+public class DiscountService(ICouponRepository _couponRepository, IMapper _mapper, ILogger<DiscountService> _logger) : DiscountProtoService.DiscountProtoServiceBase
+{
+    public async override Task<CouponModel> GetDiscount(GetDiscountRequest request, ServerCallContext context)
     {
-        var coupon = await dbContext
-            .Coupons
-            .FirstOrDefaultAsync(x => x.ProductName == request.ProductName);
+        var coupon = await _couponRepository.GetByProductName(request.ProductName);
 
-        if (coupon is null)
-            coupon = new Coupon { ProductName = "No Discount", Amount = 0, Description = "No Discount Desc" };
+        _logger.LogInformation($"Get discount with product name {request.ProductName}");
 
-        logger.LogInformation("Discount is retrieved for ProductName : {productName}, Amount : {amount}", coupon.ProductName, coupon.Amount);
-
-        var couponModel = coupon.Adapt<CouponModel>();
-        return couponModel;
+        return _mapper.Map<CouponModel>(coupon);
     }
 
-    public override async Task<CouponModel> CreateDiscount(CreateDiscountRequest request, ServerCallContext context)
+    public async override Task<CouponModel> CreateDiscount(CreateDiscountRequest request, ServerCallContext context)
     {
-        var coupon = request.Coupon.Adapt<Coupon>();
-        if (coupon is null)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid request object."));
+        var coupon = _mapper.Map<Coupon>(request.Coupon);
+        await _couponRepository.Create(coupon);
 
-        dbContext.Coupons.Add(coupon);
-        await dbContext.SaveChangesAsync();
+        _logger.LogInformation($"Create discount with product name {coupon.ProductName}");
 
-        logger.LogInformation("Discount is successfully created. ProductName : {ProductName}", coupon.ProductName);
-
-        var couponModel = coupon.Adapt<CouponModel>();
-        return couponModel;
+        return _mapper.Map<CouponModel>(coupon);
     }
 
-
-    public override async Task<CouponModel> UpdateDiscount(UpdateDiscountRequest request, ServerCallContext context)
+    public async override Task<CouponModel> UpdateDiscount(UpdateDiscountRequest request, ServerCallContext context)
     {
-        var coupon = request.Coupon.Adapt<Coupon>();
-        if (coupon is null)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Invalid request object."));
+        var coupon = _mapper.Map<Coupon>(request.Coupon);
+        await _couponRepository.Update(coupon);
 
-        dbContext.Coupons.Update(coupon);
-        await dbContext.SaveChangesAsync();
+        _logger.LogInformation($"Update discount with product name {coupon.ProductName}");
 
-        logger.LogInformation("Discount is successfully updated. ProductName : {ProductName}", coupon.ProductName);
-
-        var couponModel = coupon.Adapt<CouponModel>();
-        return couponModel;
+        return _mapper.Map<CouponModel>(coupon);
     }
 
-    public override async Task<DeleteDiscountResponse> DeleteDiscount(DeleteDiscountRequest request, ServerCallContext context)
+    public async override Task<DeleteDiscountResponse> DeleteDiscount(DeleteDiscountRequest request, ServerCallContext context)
     {
-        var coupon = await dbContext
-            .Coupons
-            .FirstOrDefaultAsync(x => x.ProductName == request.ProductName);
+        var result = await _couponRepository.Delete(request.ProductName);
 
-        if (coupon is null)
-            throw new RpcException(new Status(StatusCode.NotFound, $"Discount with ProductName={request.ProductName} is not found."));
+        _logger.LogInformation($"Delete discount with product name {request.ProductName}");
 
-        dbContext.Coupons.Remove(coupon);
-        await dbContext.SaveChangesAsync();
-
-        logger.LogInformation("Discount is successfully deleted. ProductName : {ProductName}", request.ProductName);
-
-        return new DeleteDiscountResponse { Success = true };
+        return new DeleteDiscountResponse
+        {
+            Success = result,
+        };
     }
 }

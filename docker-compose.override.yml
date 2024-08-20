@@ -1,154 +1,159 @@
 version: '3.4'
 
 services:
+
   catalogdb:
     container_name: catalogdb
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=CatalogDb
     restart: always
-    ports:
-        - "5432:5432"
     volumes:
-      - postgres_catalog:/var/lib/postgresql/data/ 
-      
+      - ./mongo_data:/data/db
+    ports:
+      - 27017:27017
+
   basketdb:
     container_name: basketdb
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=BasketDb
     restart: always
     ports:
-        - "5433:5432"
-    volumes:
-      - postgres_basket:/var/lib/postgresql/data/ 
+      - 6379:6379
 
-  distributedcache:
-    container_name: distributedcache
+  discountdb:
+    container_name: discountdb
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin1234
+      - POSTGRES_DB=discountdb
     restart: always
     ports:
-      - "6379:6379"
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
 
   orderdb:
     container_name: orderdb
     environment:
+      - SA_PASSWORD=Admin1234
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=SwN12345678
     restart: always
     ports:
-      - "1433:1433"
+      - 1433:1433
 
-  messagebroker:
-    container_name: messagebroker
-    hostname: ecommerce-mq
-    environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
+  mongoclient:
+    container_name: mongoclient
     restart: always
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - 5040:3000
+
+  pgadmin:
+    container_name: pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@aspnetrun.com
+      - PGADMIN_DEFAULT_PASSWORD=admin1234
+    restart: always
+    ports:
+      - 5050:80
+    volumes:
+      - pgadmin_data:/root/.pgadmin
+
+  portainer:
+    container_name: portainer
+    restart: always
+    ports:
+      - 9000:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+  rabbitmq:
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - 5672:5672
+      - 15672:15672
 
   catalog.api:
+    container_name: catalog.api
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
-      - ConnectionStrings__Database=Server=catalogdb;Port=5432;Database=CatalogDb;User Id=postgres;Password=postgres;Include Error Detail=true
+      - ASPNETCORE_HTTP_PORTS=8000
+      - DatabaseSettings:ConnectionString=mongodb://catalogdb:27017
     depends_on:
       - catalogdb
     ports:
-      - "6000:8080"
-      - "6060:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
+      - 8000:8000
 
   basket.api:
+    container_name: basket.api
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
-      - ConnectionStrings__Database=Server=basketdb;Port=5432;Database=BasketDb;User Id=postgres;Password=postgres;Include Error Detail=true
-      - ConnectionStrings__Redis=distributedcache:6379
-      - GrpcSettings__DiscountUrl=https://discount.grpc:8081
-      - MessageBroker__Host=amqp://ecommerce-mq:5672
-      - MessageBroker__UserName=guest
-      - MessageBroker__Password=guest
+      - ASPNETCORE_HTTP_PORTS=8001
+      - CacheSettings:ConnectionString=basketdb:6379
+      - GrpcSettings:DiscountUrl=http://discount.grpc:8003
+      - EventBusSettings:HostAddress=amqp://guest:guest@rabbitmq:5672
     depends_on:
       - basketdb
-      - distributedcache
-      - discount.grpc
-      - messagebroker
+      - rabbitmq
     ports:
-      - "6001:8080"
-      - "6061:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
+      - 8001:8001
+
+  discount.api:
+    container_name: discount.api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8002
+      - DatabaseSettings:ConnectionString=Server=discountdb;Port=5432;Database=discountdb;User Id=admin;Password=admin1234
+    depends_on:
+      - discountdb
+    ports:
+      - 8002:8002
 
   discount.grpc:
+    container_name: discount.grpc
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
-      - ConnectionStrings__Database=Data Source=discountdb
+      - ASPNETCORE_HTTP_PORTS=8003
+      - DatabaseSettings:ConnectionString=Server=discountdb;Port=5432;Database=discountdb;User Id=admin;Password=admin1234
     ports:
-      - "6002:8080"
-      - "6062:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
+      - 8003:8003
 
   ordering.api:
+    container_name: ordering.api
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
-      - ConnectionStrings__Database=Server=orderdb;Database=OrderDb;User Id=sa;Password=SwN12345678;Encrypt=False;TrustServerCertificate=True
-      - MessageBroker__Host=amqp://ecommerce-mq:5672
-      - MessageBroker__UserName=guest
-      - MessageBroker__Password=guest
-      - FeatureManagement__OrderFullfilment=false
+      - ASPNETCORE_HTTP_PORTS=8004
+      - ConnectionStrings:OrderingConnectionString=Server=orderdb;Database=orderdb;User Id=sa;Password=Admin1234;TrustServerCertificate=True;
+      # Connect orderdb in SSMS using IpConfig -> Ethernet adapter vEthernet (WSL) -> Ip V4
+      - EventBusSettings:HostAddress=amqp://guest:guest@rabbitmq:5672
     depends_on:
       - orderdb
-      - messagebroker
+      - rabbitmq
     ports:
-      - "6003:8080"
-      - "6063:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
+      - 8004:8004
 
-  yarpapigateway:
+  ocelotapigateway:
+    container_name: ocelotapigateway
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
+      - ASPNETCORE_HTTP_PORTS=8010
+    depends_on:
+      - catalog.api
+      - basket.api
+      - discount.api
+      - ordering.api
+    ports:
+      - 8010:8010
+
+  onlineshop.aggregator:
+    container_name: onlineshop.aggregator
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8005
+      - ApiSettings:CatalogUrl=http://catalog.api:8000
+      - ApiSettings:BasketUrl=http://basket.api:8001
+      - ApiSettings:OrderingUrl=http://ordering.api:8004
     depends_on:
       - catalog.api
       - basket.api
       - ordering.api
     ports:
-      - "6004:8080"
-      - "6064:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
+      - 8005:8005
 
-  shopping.web:
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
-      - ApiSettings__GatewayAddress=http://yarpapigateway:8080
-    depends_on:
-      - yarpapigateway
-    ports:
-      - "6005:8080"
-      - "6065:8081"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro

@@ -6,10 +6,11 @@
       "serviceActions": {
         "catalog.api": "StartDebugging",
         "basket.api": "StartDebugging",
+        "discount.api": "StartDebugging",
         "discount.grpc": "StartDebugging",
         "ordering.api": "StartDebugging",
-        "yarpapigateway": "StartDebugging",
-        "shopping.web": "StartDebugging"
+        "ocelotapigateway": "StartDebugging",
+        "onlineshop.aggregator": "StartDebugging"
       }
     }
   }

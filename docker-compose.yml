@@ -2,31 +2,46 @@ version: '3.4'
 
 services:
   catalogdb:
-    image: postgres
+    image: mongo
 
   basketdb:
-    image: postgres
+    image: redis:alpine
 
-  distributedcache:
-    image: redis
+  discountdb:
+    image: postgres
 
   orderdb:
     image: mcr.microsoft.com/mssql/server
 
-  messagebroker:
-    image: rabbitmq:management
+  mongoclient:
+    image: mongoclient/mongoclient
+
+  pgadmin:
+    image: dpage/pgadmin4
+    
+  portainer:
+    image: portainer/portainer-ce
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
 
   catalog.api:
     image: ${DOCKER_REGISTRY-}catalogapi
     build:
       context: .
-      dockerfile: Services/Catalog/Catalog.API/Dockerfile
+      dockerfile: Services/Catalog/Catalog.Api/Dockerfile
 
   basket.api:
     image: ${DOCKER_REGISTRY-}basketapi
     build:
       context: .
-      dockerfile: Services/Basket/Basket.API/Dockerfile
+      dockerfile: Services/Basket/Basket.Api/Dockerfile
+
+  discount.api:
+    image: ${DOCKER_REGISTRY-}discountapi
+    build:
+      context: .
+      dockerfile: Services/Discount/Discount.Api/Dockerfile
 
   discount.grpc:
     image: ${DOCKER_REGISTRY-}discountgrpc
@@ -38,26 +53,23 @@ services:
     image: ${DOCKER_REGISTRY-}orderingapi
     build:
       context: .
-      dockerfile: Services/Ordering/Ordering.API/Dockerfile
+      dockerfile: Services/Ordering/Ordering.Api/Dockerfile
 
-  yarpapigateway:
-    image: ${DOCKER_REGISTRY-}yarpapigateway
+  ocelotapigateway:
+    image: ${DOCKER_REGISTRY-}ocelotapigateway
     build:
       context: .
-      dockerfile: ApiGateways/YarpApiGateway/Dockerfile
+      dockerfile: ApiGateways/OcelotApiGateway/Dockerfile
 
-  shopping.web:
-    image: ${DOCKER_REGISTRY-}shoppingweb
+  onlineshop.aggregator:
+    image: ${DOCKER_REGISTRY-}onlineshopaggregator
     build:
       context: .
-      dockerfile: WebApps/Shopping.Web/Dockerfile
+      dockerfile: ApiGateways/OnlineShop.Aggregator/OnlineShop.Aggregator/Dockerfile
 
 volumes:
-  postgres_catalog:
-  postgres_basket:
-
-
-
-
+  portainer_data:
+  postgres_data:
+  pgadmin_data:
 
 

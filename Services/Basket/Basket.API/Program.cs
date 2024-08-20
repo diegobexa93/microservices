@@ -1,73 +1,45 @@
-using Discount.Grpc;
-using HealthChecks.UI.Client;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using BuildingBlocks.Messaging.MassTransit;
+using Basket.Api.GrpcServices;
+using Basket.Api.Repositories;
+using Discount.Grpc.Protos;
+using MassTransit;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-
-//Application Services
-var assembly = typeof(Program).Assembly;
-builder.Services.AddCarter();
-builder.Services.AddMediatR(config =>
-{
-    config.RegisterServicesFromAssembly(assembly);
-    config.AddOpenBehavior(typeof(ValidationBehavior<,>));
-    config.AddOpenBehavior(typeof(LoggingBehavior<,>));
-});
-
-//Data Services
-builder.Services.AddMarten(opts =>
-{
-    opts.Connection(builder.Configuration.GetConnectionString("Database")!);
-    opts.Schema.For<ShoppingCart>().Identity(x => x.UserName);
-}).UseLightweightSessions();
-
-builder.Services.AddScoped<IBasketRepository, BasketRepository>();
-builder.Services.Decorate<IBasketRepository, CachedBasketRepository>();
-
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = builder.Configuration.GetConnectionString("Redis");
-    //options.InstanceName = "Basket";
+    options.Configuration = builder.Configuration.GetValue<string>("CacheSettings:ConnectionString");
 });
 
-//Grpc Services
+builder.Services.AddControllers();
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
 builder.Services.AddGrpcClient<DiscountProtoService.DiscountProtoServiceClient>(options =>
 {
-    options.Address = new Uri(builder.Configuration["GrpcSettings:DiscountUrl"]!);
-})
-.ConfigurePrimaryHttpMessageHandler(() =>
-{
-    var handler = new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback =
-        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-    };
+    options.Address = new Uri(builder.Configuration.GetValue<string>("GrpcSettings:DiscountUrl") ?? "");
+});
+builder.Services.AddScoped<DiscountGrpcService>();
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 
-    return handler;
+builder.Services.AddMassTransit(config =>
+{
+    config.UsingRabbitMq((context, conf) =>
+    {
+        conf.Host(builder.Configuration.GetValue<string>("EventBusSettings:HostAddress"));
+    });
 });
 
-//Async Communication Services
-builder.Services.AddMessageBroker(builder.Configuration);
-
-//Cross-Cutting Services
-builder.Services.AddExceptionHandler<CustomExceptionHandler>();
-
-builder.Services.AddHealthChecks()
-    .AddNpgSql(builder.Configuration.GetConnectionString("Database")!)
-    .AddRedis(builder.Configuration.GetConnectionString("Redis")!);
+builder.Services.AddAutoMapper(typeof(Program));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-app.MapCarter();
-app.UseExceptionHandler(options => { });
-app.UseHealthChecks("/health",
-    new HealthCheckOptions
-    {
-        ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-    });
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.MapControllers();
 
 app.Run();
